@@ -76,9 +76,26 @@ class SelectorBIC(ModelSelector):
         """
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        # TODO implement model selection based on BIC scores
-        raise NotImplementedError
+        scores = []
 
+        for n_components in range(self.min_n_components, self.max_n_components + 1):
+            try:
+                model = self.base_model(n_components)
+                logL = model.score(self.X, self.lengths)
+                n = n_components
+                f = self.X.shape[1]
+                p = n*(n-1)+2*f*n
+                logN = np.log(self.X.shape[0])
+                BIC_score = -2 * logL + p * logN
+                scores.append((BIC_score,n_components))
+
+            except:
+                continue
+
+        _, best_num_components=min(scores)
+
+
+        return self.base_model(best_num_components)
 
 class SelectorDIC(ModelSelector):
     ''' select best model based on Discriminative Information Criterion
@@ -104,5 +121,33 @@ class SelectorCV(ModelSelector):
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        # TODO implement model selection using CV
-        raise NotImplementedError
+
+        scores = [(float('-inf'),0)]
+        n_splits = 3
+        split_method = KFold(random_state=self.random_state, n_splits=n_splits)
+
+        for n_components in range(self.min_n_components, self.max_n_components + 1):
+            try:
+                cv_scores=[]
+                for train_index, test_index in split_method.split(self.sequences):
+                    X_train, lengths_train = combine_sequences(train_index, self.sequences)
+                    X_test,  lengths_test  = combine_sequences(test_index, self.sequences)
+
+
+                    hmm_model = GaussianHMM(n_components=n_components, covariance_type="diag", n_iter=1000, random_state=self.random_state, verbose=False).fit(X_train, lengths_train)
+                    logL = hmm_model.score(X_test, lengths_test)
+
+
+                    cv_scores.append(logL)
+
+                cv_scores_mean = (np.array(cv_scores)).mean()
+                scores.append((cv_scores_mean, n_components))
+
+            except:
+                break
+        print(scores)
+        _, best_num_components = min(scores)
+        print(best_num_components)
+
+
+        return self.base_model(best_num_components)
